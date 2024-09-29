@@ -19,33 +19,42 @@ import javax.inject.Inject
 import javax.inject.Named
 
 @HiltViewModel
-class RecipeListViewModel @Inject constructor(
+class RecipeListFlowViewModel @Inject constructor(
+
     private val repository: RecipeRepository,
     @Named("auth_token") private val token: String,
     private val app: Application
 ) : ViewModel() {
-    val alRecipeList = MutableLiveData<RecipeListState>()
+
+    private val _uiState = MutableStateFlow<RecipeListState>(RecipeListState.Loading)
+
+    val uiState: StateFlow<RecipeListState> = _uiState
+
     var job: Job? = null
     private val exceptionHandler = CoroutineExceptionHandler { _, throwable ->
         onError("Exception handled: ${throwable.localizedMessage}")
     }
 
     private fun onError(s: String) {
-        alRecipeList.value = RecipeListState.Error(s)
+        _uiState.value = RecipeListState.Error(s)
     }
 
     init {
-        getAllRecipes()
+        getAllRecipesFlow()
     }
 
-    fun getAllRecipes() {
+    private fun getAllRecipesFlow() {
         if (NetworkHelper.isNetworkAvailable(app)) {
             job = viewModelScope.launch(exceptionHandler) {
-                val result = repository.search(token = token, page = 1, query = "Chicken")
-                alRecipeList.value = result.value
+                repository.searchWithFlow(token = token, page = 1, query = "Chicken")
+                    .collect {
+                        if (it != null) {
+                            _uiState.value = it
+                        }
+                    }
             }
         } else {
-            alRecipeList.value = RecipeListState.Error(app.getString(R.string.no_internet))
+            _uiState.value = RecipeListState.Error(app.getString(R.string.no_internet))
         }
 
     }
